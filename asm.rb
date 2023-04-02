@@ -151,7 +151,7 @@ class Parser
         end
         @instructions << [instruction, operands]
       when :DATA
-        @instructions << eval(instruction)
+        @instructions << ['line_data', eval(instruction)]
       end
     end
     @instructions
@@ -183,13 +183,13 @@ class CodeGenerator
         @code <<  ASM::INSTRUCTIONS[instruction[0].to_sym] << 4 | instruction[1][0] << 2 | instruction[1][1]
       when 'data'
         @code << ASM::INSTRUCTIONS[:data] << 4 | instruction[1][0]
-        @code << eval(instruction[1][1])
       when 'jc','ja','je','jz','jca','jce','jcz','jez','jae','jaz','jez','jcae','jcaz','jcez','jaez','jcaez','clf'
         @code << ASM::INSTRUCTION[instruction[0].to_sym]
       when 'jmpr'
         @code << ASM::INSTRUCTION[:jmpr] << 4 | instruction[1][0]
       when 'jmp'
         @code << ASM::INSTRUCTION[:jmp] << 4
+      when 'line_data'
         @code << instruction[1]
       end
     end
