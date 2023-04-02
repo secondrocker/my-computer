@@ -1,14 +1,66 @@
 require 'byebug'
+
+module ASM
+  INSTRUCTIONS = {
+    add: 0b10000000,
+    shr: 0b10010000,
+    shl: 0b10100000,
+    not: 0b10110000,
+    and: 0b11000000,
+    or: 0b11010000,
+    xor: 0b11100000,
+    cmp: 0b11110000,
+  
+    #数据
+    ld: 0b00000000,
+    st: 0b00010000,
+    data: 0b00100000,
+  
+    # 跳转
+    jmpr: 0b00110000,
+    jmp: 0b01000000,
+  
+    jc: 0b01011000,
+    ja: 0b01010100,
+    je: 0b01010010,
+    jz: 0b01010001,
+    jca: 0b01011100,
+    jce: 0b01011010,
+    jcz: 0b01011001,
+    jae: 0b01010110,
+    jaz: 0b01010101,
+    jez: 0b01010011,
+    jcae: 0b01011110,
+    jcaz: 0b01011101,
+    jcez: 0b01011011,
+    jaez: 0b01010111,
+    jcaez: 0b01011111,
+  
+    # 清除
+    clf: 0b01100000,
+  
+    # IN
+    in: 0b1110000,
+    out: 0b1110000
+  }
+
+	# 寄存器
+	REG0 = 0b000000
+	REG1 = 0b010000
+	REG2 = 0b100000
+	REG3 = 0b110000
+end
+
 # 定义汇编语言的语法规则
 module AssemblyGrammar
-  # 指令
-  INSTRUCTIONS = %w(mov add sub jmp cmp)
+  # 指令 todo
+  INSTRUCTIONS = ASM::INSTRUCTIONS.keys
   # 寄存器
-  REGISTERS = %w(ax bx cx dx)
+  REGISTERS = %w(r0 r1 r2 r3)
   # 标签
   LABEL_REGEX = /(\w+):/
   # 操作数
-  OPERAND_REGEX = /([a-z]+|\d+)/
+  OPERAND_REGEX = /([a-z]+\d?|\d+|0x[0-9a-f]+|0b[0-1]+)/
   # 操作数列表
   OPERANDS_REGEX = /#{OPERAND_REGEX},\s*#{OPERAND_REGEX}/
   # 完整的指令格式
@@ -43,7 +95,9 @@ class Lexer
           end
         end
         @tokens << [:INSTRUCTION, instruction, operands]
-        byebug
+        if %w[ld st jmp].include?(instruction)
+          @tokens << [:DATA, operands[1],[] ]
+        end
       end
     end
     @tokens
@@ -59,9 +113,14 @@ class Parser
   end
   def parse
     # 第一遍扫描，收集标签的位置信息
+    # addition
+    # addition = 0
     @tokens.each_with_index do |token, index|
+      # if token[0] == :DATA
+      #   addition += 1
+      # els
       if token[0] == :LABEL
-        @labels[token[1]] = index
+        @labels[token[1]] = index + addition
       end
     end
     # 第二遍扫描，将汇编代码转换成中间代码
@@ -73,37 +132,29 @@ class Parser
           if operand[0] == :REGISTER
             operand[1]
           else
-            @labels[operand[1]] || operand[1].to_i
+            # label 或者 操作数(10进制,2进制，16进制)
+            lab = @labels[operand[1]]
+            # label
+            if lab
+              lab
+            # 寄存器
+            elsif ri = register_index(operand[1])
+              ri
+            # 操作数
+            elsif /^\d+|0x[a-f0-9]+|0b[0-1]+$/
+              eval(lab)
+            # 其他操作数
+            else
+              eval(lab)
+            end
           end
         end
         @instructions << [instruction, operands]
+      when :DATA
+        @instructions << eval(instruction)
       end
     end
     @instructions
-  end
-end
-# 目标代码生成器
-class CodeGenerator
-  def initialize(instructions)
-    @instructions = instructions
-    @code = []
-  end
-  def generate
-    @instructions.each do |instruction|
-      case instruction[0]
-      when 'mov'
-        @code << 0b0001_0000_0000_0000 | (register_index(instruction[1][0]) << 8) | register_index(instruction[1][1])
-      when 'add'
-        @code << 0b0001_1000_0000_0000 | (register_index(instruction[1][0]) << 8) | register_index(instruction[1][1])
-      when 'sub'
-        @code << 0b0001_1100_0000_0000 | (register_index(instruction[1][0]) << 8) | register_index(instruction[1][1])
-      when 'jmp'
-        @code << 0b0100_0000_0000_0000 | (instruction[1] << 8)
-      when 'cmp'
-        @code << 0b0010_0000_0000_0000 | (register_index(instruction[1][0]) << 8) | register_index(instruction[1][1])
-      end
-    end
-    @code
   end
   private
   def register_index(register)
@@ -117,6 +168,32 @@ class CodeGenerator
     when 'dx'
       0b11
     end
+  end
+end
+# 目标代码生成器
+class CodeGenerator
+  def initialize(instructions)
+    @instructions = instructions
+    @code = []
+  end
+  def generate
+    @instructions.each do |instruction|
+      case instruction[0]
+      when 'add','shr','shl','not','and','or','xor','cmp','ld','st'
+        @code <<  ASM::INSTRUCTIONS[instruction[0].to_sym] << 4 | instruction[1][0] << 2 | instruction[1][1]
+      when 'data'
+        @code << ASM::INSTRUCTIONS[:data] << 4 | instruction[1][0]
+        @code << eval(instruction[1][1])
+      when 'jc','ja','je','jz','jca','jce','jcz','jez','jae','jaz','jez','jcae','jcaz','jcez','jaez','jcaez','clf'
+        @code << ASM::INSTRUCTION[instruction[0].to_sym]
+      when 'jmpr'
+        @code << ASM::INSTRUCTION[:jmpr] << 4 | instruction[1][0]
+      when 'jmp'
+        @code << ASM::INSTRUCTION[:jmp] << 4
+        @code << instruction[1]
+      end
+    end
+    @code
   end
 end
 # 测试代码
@@ -137,3 +214,4 @@ instructions = parser.parse
 generator = CodeGenerator.new(instructions)
 code = generator.generate
 puts code.map { |c| "%04x" % c }.join(' ')
+# 大端代码
