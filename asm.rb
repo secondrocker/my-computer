@@ -12,8 +12,8 @@ module ASM
     cmp: 0b11110000,
   
     #数据
-    ld: 0b00000000,
-    st: 0b00010000,
+    load: 0b00000000,
+    store: 0b00010000,
     data: 0b00100000,
   
     # 跳转
@@ -40,15 +40,15 @@ module ASM
     clf: 0b01100000,
   
     # IN
-    in: 0b1110000,
-    out: 0b1110000
+    in: 0b01110000,
+    out: 0b01111000
   }
 
 	# 寄存器
-	REG0 = 0b000000
-	REG1 = 0b010000
-	REG2 = 0b100000
-	REG3 = 0b110000
+	REG0 = 0b00
+	REG1 = 0b01
+	REG2 = 0b10
+	REG3 = 0b11
 end
 
 # 定义汇编语言的语法规则
@@ -59,8 +59,11 @@ module AssemblyGrammar
   REGISTERS = %w(r0 r1 r2 r3)
   # 标签
   LABEL_REGEX = /(\w+):/
+  # 常量
+  CONSTS = /(%[a-z]+[a-z0-9_]*)\s*=\s*(0x[0-9a-f]+|0b[0-1]+|\d+)/
+
   # 操作数
-  OPERAND_REGEX = /([a-z]+\d?|\d+|0x[0-9a-f]+|0b[0-1]+)/
+  OPERAND_REGEX = /([a-z]+\d?|\d+|0x[0-9a-f]+|0b[0-1]+|%[a-z]+[a-z0-9_]*)/
   # 操作数列表
   OPERANDS_REGEX = /#{OPERAND_REGEX},\s*#{OPERAND_REGEX}/
   # 完整的指令格式
@@ -81,6 +84,8 @@ class Lexer
       # 匹配标签
       if (match = line.match(LABEL_REGEX))
         @tokens << [:LABEL, match[1]]
+      elsif match = line.match(CONSTS)
+        @tokens << [:CONST, [match[1], match[2]]]
       end
       # 匹配指令
       if (match = line.match(INSTRUCTION_REGEX))
@@ -91,12 +96,18 @@ class Lexer
           if operand.match(REGISTER_REGEX)
             [:REGISTER, operand]
           else
+            if %w[in out].include?(instruction)
+              raise "in/out only receive data/addr" unless %w[data addr].include?(operand)
+              [:OPERAND,operand == 'data' ? 0b0000 : 0b0100]
+            end
             [:OPERAND, operand]
           end
         end
         @tokens << [:INSTRUCTION, instruction, operands]
-        if %w[ld st jmp].include?(instruction)
-          @tokens << [:DATA, operands[1],[] ]
+        if 'data' == instruction
+          @tokens << [:DATA, operands[1][1],[] ]
+        elsif 'jmp' == instruction
+          @tokens << [:LABEL_DATA, operands[0][1],[] ]
         end
       end
     end
@@ -109,18 +120,24 @@ class Parser
   def initialize(tokens)
     @tokens = tokens
     @labels = {}
+    @consts = {}
     @instructions = []
   end
   def parse
     # 第一遍扫描，收集标签的位置信息
     # addition
     # addition = 0
-    @tokens.each_with_index do |token, index|
+    index = 0
+    @tokens.each do |token|
       # if token[0] == :DATA
       #   addition += 1
       # els
       if token[0] == :LABEL
-        @labels[token[1]] = index + addition
+        @labels[token[1]] = index
+      elsif token[0] == :CONST
+        @consts[token[1][0]] = eval(token[1][1])
+      else
+        index += 1
       end
     end
     # 第二遍扫描，将汇编代码转换成中间代码
@@ -130,28 +147,35 @@ class Parser
         instruction = token[1]
         operands = token[2].map do |operand|
           if operand[0] == :REGISTER
-            operand[1]
+            register_index(operand[1])
           else
             # label 或者 操作数(10进制,2进制，16进制)
             lab = @labels[operand[1]]
+
+            # 常量
+            cst = @consts[operand[1]]
             # label
             if lab
               lab
+            elsif cst
+              cst
             # 寄存器
             elsif ri = register_index(operand[1])
               ri
             # 操作数
-            elsif /^\d+|0x[a-f0-9]+|0b[0-1]+$/
-              eval(lab)
+            elsif /^\d+|0x[a-f0-9]+|0b[0-1]+$/ =~ operand[1]
+              eval(operand[1])
             # 其他操作数
             else
-              eval(lab)
+              eval(operand[1])
             end
           end
         end
         @instructions << [instruction, operands]
       when :DATA
-        @instructions << ['line_data', eval(instruction)]
+        @instructions << ['line_data', @consts[token[1]] || eval(token[1])]
+      when :LABEL_DATA
+        @instructions << ['line_data', @labels[token[1]]]
       end
     end
     @instructions
@@ -159,14 +183,14 @@ class Parser
   private
   def register_index(register)
     case register
-    when 'ax'
-      0b00
-    when 'bx'
-      0b01
-    when 'cx'
-      0b10
-    when 'dx'
-      0b11
+    when 'r0'
+      ASM::REG0
+    when 'r1'
+      ASM::REG1
+    when 'r2'
+      ASM::REG2
+    when 'r3'
+      ASM::REG3
     end
   end
 end
@@ -179,18 +203,20 @@ class CodeGenerator
   def generate
     @instructions.each do |instruction|
       case instruction[0]
-      when 'add','shr','shl','not','and','or','xor','cmp','ld','st'
-        @code <<  ASM::INSTRUCTIONS[instruction[0].to_sym] << 4 | instruction[1][0] << 2 | instruction[1][1]
+      when 'add','shr','shl','not','and','or','xor','cmp','load','store'
+        @code << (ASM::INSTRUCTIONS[instruction[0].to_sym] | instruction[1][0] << 2 | instruction[1][1])
       when 'data'
-        @code << ASM::INSTRUCTIONS[:data] << 4 | instruction[1][0]
+        @code << (ASM::INSTRUCTIONS[:data] | instruction[1][0])
       when 'jc','ja','je','jz','jca','jce','jcz','jez','jae','jaz','jez','jcae','jcaz','jcez','jaez','jcaez','clf'
-        @code << ASM::INSTRUCTION[instruction[0].to_sym]
+        @code << ASM::INSTRUCTIONS[instruction[0].to_sym]
       when 'jmpr'
-        @code << ASM::INSTRUCTION[:jmpr] << 4 | instruction[1][0]
+        @code << (ASM::INSTRUCTIONS[:jmpr] | instruction[1][0])
       when 'jmp'
-        @code << ASM::INSTRUCTION[:jmp] << 4
+        @code << ASM::INSTRUCTIONS[:jmp]
       when 'line_data'
         @code << instruction[1]
+      when 'in', 'out'
+        @code << (ASM::INSTRUCTIONS[instruction[0].to_sym] | instruction[1][0] | instruction[1][1])
       end
     end
     @code
@@ -198,14 +224,15 @@ class CodeGenerator
 end
 # 测试代码
 code = <<~CODE
+  %abc = 0xaf
   start:
-    mov ax, 1
-    mov bx, 2
-    add ax, bx
-    cmp ax, 10
+    data r0, %abc
+    data r1, 2
+    add r0, r1
+    cmp r0, r1
     jmp end
   end:
-    sub ax, bx
+    add r0, r1
 CODE
 lexer = Lexer.new(code)
 tokens = lexer.tokenize
@@ -213,5 +240,5 @@ parser = Parser.new(tokens)
 instructions = parser.parse
 generator = CodeGenerator.new(instructions)
 code = generator.generate
-puts code.map { |c| "%04x" % c }.join(' ')
+puts code.map { |c| "%02x" % c }.join(' ')
 # 大端代码

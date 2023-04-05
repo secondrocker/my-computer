@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -87,7 +88,10 @@ func (c *Computer) loadInstruction() bool {
 	if err != nil {
 		panic(err)
 	}
-	c.ram.SetData()
+	for i := 0; i < len(data); i += 2 {
+		bt := data[i : i+2]
+		c.ram.SetData(i/2, int(binary.BigEndian.Uint16(bt)))
+	}
 }
 
 func (c *Computer) processInstruction() bool {
