@@ -1,12 +1,14 @@
 package main
 
 import (
-	"encoding/binary"
+	"bufio"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	cm "mc/components"
 	per "mc/peripherals"
+	"os"
+	"strconv"
 )
 
 var (
@@ -14,7 +16,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&binPath, "bin", "EOR", "file path")
+	flag.StringVar(&binPath, "bin", "test.bin", "file path")
 }
 func main() {
 	flag.Parse()
@@ -84,20 +86,30 @@ func initComputer() *Computer {
 }
 
 func (c *Computer) loadInstruction() bool {
-	data, err := ioutil.ReadFile(binPath)
+	file, err := os.Open(binPath)
 	if err != nil {
-		panic(err)
+		panic("error read file")
 	}
-	for i := 0; i < len(data); i += 2 {
-		bt := data[i : i+2]
-		c.ram.SetData(i/2, int(binary.BigEndian.Uint16(bt)))
+	defer file.Close()
+
+	br := bufio.NewReader(file)
+	i := 0
+	for {
+		a, _, err := br.ReadLine()
+		if err == io.EOF {
+			break
+		}
+		num, _ := strconv.Atoi(string(a))
+		c.ram.SetData(i, num)
+		i += 1
 	}
+	return true
 }
 
 func (c *Computer) processInstruction() bool {
 	num := c.ir.Get()
 	leftPart := num >> 4
-	rightPart := num << 4
+	rightPart := num / 0x10
 	//算数计算
 	if leftPart >= 8 {
 		c.arithmeticProcess(leftPart, rightPart)
@@ -121,9 +133,9 @@ func (c *Computer) processInstruction() bool {
 
 // 算数计算
 func (c *Computer) arithmeticProcess(left, right int) {
-	left = left << 1
+	left = left / 2
 	rL := c.registers[right>>2]
-	rR := c.registers[right<<2]
+	rR := c.registers[right/4]
 	c.alu.SetOpt(left)
 	c.alu.SetInputA(rL.Get())
 	c.tmp.Set(rR.Get())
@@ -145,7 +157,7 @@ func (c *Computer) LD_ST(left, right int) {
 		return
 	}
 	rL := c.registers[right>>2]
-	rR := c.registers[right<<2]
+	rR := c.registers[right/4]
 	// load
 	if left == 0 {
 		c.mar.Set(rL.Get())
@@ -176,7 +188,7 @@ func (c *Computer) JMPR(left, right int) {
 	if left != 3 {
 		return
 	}
-	rR := c.registers[right<<2]
+	rR := c.registers[right/4]
 
 	c.iar.Set(rR.Get())
 }
@@ -219,7 +231,7 @@ func (c *Computer) IN_OUT(left, right int) {
 	if left != 7 {
 		return
 	}
-	rg := c.registers[right<<2]
+	rg := c.registers[right/4]
 	codes := []byte(fmt.Sprintf("%04b", right))
 	if codes[0] == 48 { //in
 		if codes[1] == 48 { //data

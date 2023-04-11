@@ -11,12 +11,14 @@ import (
 type Display struct {
 	inputMar  int
 	outputMar int
-	ram       [256]int
+	ram       [8]int
+	count     int
 }
 
 func NewDisplay() *Display {
 	d := &Display{
-		ram: [256]int{},
+		ram:   [8]int{},
+		count: 0,
 	}
 	d.Draw()
 	return d
@@ -27,7 +29,12 @@ func (d *Display) SetInputMar(v int) {
 }
 
 func (d *Display) Set(v int) {
-	d.ram[d.inputMar] = v
+	d.ram[d.count] = v >> 8
+	d.ram[d.count+1] = v / 0x0100
+	d.count += 2
+	if d.count == 8 {
+		d.count = 0
+	}
 }
 
 func (d *Display) Get() int {
@@ -35,21 +42,20 @@ func (d *Display) Get() int {
 }
 
 func (d *Display) Draw() {
-	t := time.Tick(time.Millisecond * 10)
-
-	for {
-		<-t
-		cmd := exec.Command("clear")
-		cmd.Stdout = os.Stdout
-		cmd.Run()
-		for i := 0; i < 32; i++ {
-			for j := 0; j < 8; j++ {
-				show := d.ram[i*8+j]
+	go func() {
+		t := time.Tick(time.Millisecond * 10)
+		for {
+			<-t
+			cmd := exec.Command("clear")
+			cmd.Stdout = os.Stdout
+			cmd.Run()
+			for i := 0; i < 8; i++ {
+				show := d.ram[i]
 				fmt.Printf("%s\n", changeStr(show))
+				fmt.Printf("\n")
 			}
-			fmt.Printf("\n")
 		}
-	}
+	}()
 }
 
 func changeStr(v int) string {

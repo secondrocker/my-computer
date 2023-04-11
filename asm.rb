@@ -99,8 +99,9 @@ class Lexer
             if %w[in out].include?(instruction)
               raise "in/out only receive data/addr" unless %w[data addr].include?(operand)
               [:OPERAND,operand == 'data' ? 0b0000 : 0b0100]
+            else
+              [:OPERAND, operand]
             end
-            [:OPERAND, operand]
           end
         end
         @tokens << [:INSTRUCTION, instruction, operands]
@@ -141,6 +142,7 @@ class Parser
       end
     end
     # 第二遍扫描，将汇编代码转换成中间代码
+    byebug
     @tokens.each do |token|
       case token[0]
       when :INSTRUCTION
@@ -163,6 +165,8 @@ class Parser
             elsif ri = register_index(operand[1])
               ri
             # 操作数
+            elsif operand[1].is_a?(Integer)
+              operand[1]
             elsif /^\d+|0x[a-f0-9]+|0b[0-1]+$/ =~ operand[1]
               eval(operand[1])
             # 其他操作数
@@ -223,22 +227,17 @@ class CodeGenerator
   end
 end
 # 测试代码
-code = <<~CODE
-  %abc = 0xaf
-  start:
-    data r0, %abc
-    data r1, 2
-    add r0, r1
-    cmp r0, r1
-    jmp end
-  end:
-    add r0, r1
-CODE
+code = File.read(ARGV[0])
 lexer = Lexer.new(code)
 tokens = lexer.tokenize
 parser = Parser.new(tokens)
 instructions = parser.parse
 generator = CodeGenerator.new(instructions)
-code = generator.generate
-puts code.map { |c| "%02x" % c }.join(' ')
+codes = generator.generate
+# puts code.map { |c| "%02x" % c }.join(' ')
 # 大端代码
+File.open("test.bin","w+") do |f|
+  codes.each do |code|
+    f.puts(code)
+  end
+end

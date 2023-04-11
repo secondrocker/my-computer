@@ -108,10 +108,10 @@ func (a *ALU) Add() {
 	if a.carryIn {
 		v += 1
 	}
-	if v <= 255 {
+	if v <= 0xffff {
 		a.carryOut = false
 	}
-	a.output = v % 256
+	a.output = v % 0xffff
 	a.carryOut = true
 }
 
@@ -121,12 +121,12 @@ func (a *ALU) Shr() {
 	}
 	a.output = a.output >> 1
 	if a.carryIn {
-		a.output = a.output + 128
+		a.output = a.output + 0x8000
 	}
 }
 
 func (a *ALU) Shl() {
-	if a.inputA%2 >= 128 {
+	if a.inputA%2 >= 0x8000 {
 		a.carryOut = true
 	}
 	a.output = a.output << 1
@@ -137,7 +137,7 @@ func (a *ALU) Shl() {
 
 func (a *ALU) Not() {
 	a.carryOut = false
-	a.output = a.inputA ^ 255
+	a.output = a.inputA ^ 0xffff
 }
 
 func (a *ALU) And() {
@@ -168,7 +168,7 @@ func (a *ALU) Zero() bool {
 }
 
 type RAM struct {
-	data [256]int
+	data [65536]int
 }
 
 func (r *RAM) GetData(address int) int {

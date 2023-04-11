@@ -14,7 +14,7 @@ func (a *Adapter) GetAddr() int {
 }
 
 func NewAdapter() *Adapter {
-	display := &Display{}
+	display := NewDisplay()
 	return &Adapter{
 		equipments: map[int]Equipment{
 			7: display,
