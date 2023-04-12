@@ -142,7 +142,6 @@ class Parser
       end
     end
     # 第二遍扫描，将汇编代码转换成中间代码
-    byebug
     @tokens.each do |token|
       case token[0]
       when :INSTRUCTION

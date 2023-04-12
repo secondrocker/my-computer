@@ -1,20 +1,20 @@
 %display_addr = 0x07
 
 data r0, 0xf000
-data r1, 0x7e80
+data r1, 0x7e40
 store r0, r1
 
 echo:
 data r0, 0xf001
-data r1,0x807c
+data r1,0x407c
 store r0, r1
 
 data r0, 0xf002
-data r1, 0x8080
+data r1, 0x4040
 store r0, r1
 
 data r0, 0xf003
-data r1, 0xf000
+data r1, 0x7e00
 store r0, r1
 
 data r0, %display_addr

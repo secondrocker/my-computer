@@ -109,7 +109,7 @@ func (c *Computer) loadInstruction() bool {
 func (c *Computer) processInstruction() bool {
 	num := c.ir.Get()
 	leftPart := num >> 4
-	rightPart := num / 0x10
+	rightPart := num & 0x000f
 	//算数计算
 	if leftPart >= 8 {
 		c.arithmeticProcess(leftPart, rightPart)
@@ -135,7 +135,7 @@ func (c *Computer) processInstruction() bool {
 func (c *Computer) arithmeticProcess(left, right int) {
 	left = left / 2
 	rL := c.registers[right>>2]
-	rR := c.registers[right/4]
+	rR := c.registers[right&0x03]
 	c.alu.SetOpt(left)
 	c.alu.SetInputA(rL.Get())
 	c.tmp.Set(rR.Get())
@@ -157,11 +157,11 @@ func (c *Computer) LD_ST(left, right int) {
 		return
 	}
 	rL := c.registers[right>>2]
-	rR := c.registers[right/4]
+	rR := c.registers[right&0x03]
 	// load
 	if left == 0 {
 		c.mar.Set(rL.Get())
-		rR.Set(c.mar.Get())
+		rR.Set(c.ram.GetData(c.mar.Get()))
 	} else { // store
 		c.mar.Set(rL.Get())
 		c.ram.SetData(c.mar.Get(), rR.Get())
@@ -174,12 +174,12 @@ func (c *Computer) DATA(left, right int) {
 	if left != 2 {
 		return
 	}
-	rL := c.registers[right>>2]
+	rR := c.registers[right&0x03]
 	c.mar.Set(c.iar.Get())
 	c.alu.SetInputA(c.iar.Get())
 	c.alu.BusOne()
 	c.acc.Set(c.alu.GetValue())
-	rL.Set(c.ram.GetData(c.mar.Get()))
+	rR.Set(c.ram.GetData(c.mar.Get()))
 	c.iar.Set(c.acc.Get())
 }
 
@@ -188,7 +188,7 @@ func (c *Computer) JMPR(left, right int) {
 	if left != 3 {
 		return
 	}
-	rR := c.registers[right/4]
+	rR := c.registers[right&0x03]
 
 	c.iar.Set(rR.Get())
 }
@@ -231,7 +231,7 @@ func (c *Computer) IN_OUT(left, right int) {
 	if left != 7 {
 		return
 	}
-	rg := c.registers[right/4]
+	rg := c.registers[right&0x03]
 	codes := []byte(fmt.Sprintf("%04b", right))
 	if codes[0] == 48 { //in
 		if codes[1] == 48 { //data

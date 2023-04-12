@@ -30,7 +30,7 @@ func (d *Display) SetInputMar(v int) {
 
 func (d *Display) Set(v int) {
 	d.ram[d.count] = v >> 8
-	d.ram[d.count+1] = v / 0x0100
+	d.ram[d.count+1] = v & 0x0ff
 	d.count += 2
 	if d.count == 8 {
 		d.count = 0
@@ -43,7 +43,7 @@ func (d *Display) Get() int {
 
 func (d *Display) Draw() {
 	go func() {
-		t := time.Tick(time.Millisecond * 10)
+		t := time.Tick(time.Second * 1)
 		for {
 			<-t
 			cmd := exec.Command("clear")
